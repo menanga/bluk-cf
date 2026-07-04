@@ -14,7 +14,7 @@
 
 This tool automates the **entire lifecycle** of creating Cloudflare accounts with Workers AI access:
 
-1. **📧 Generate temp email** — via jackmail-compatible API (multiple domains)
+1. **📧 Generate temp email** — via disposable mail API (any mailserver with compatible endpoint)
 2. **🔐 Sign up Cloudflare account** — fill form, solve Turnstile CAPTCHA, submit
 3. **🔑 Create Account API Token** — with Workers AI (Read + Edit) permissions
 4. **✅ Validate token** — verify against Workers AI REST API
@@ -23,7 +23,7 @@ This tool automates the **entire lifecycle** of creating Cloudflare accounts wit
 **Output example:**
 ```json
 {
-  "email": "cf12345@jackishere.web.id",
+  "email": "cf12345@yourdomain.com",
   "password": "Cf*Ab3xK9$mQ",
   "account_id": "a1b2c3d4e5f6789012345678abcdef01",
   "api_token": "cfut_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -278,10 +278,144 @@ This tool is provided for **educational and security research purposes only**. U
 
 ## 🙏 Acknowledgments
 
+- [Auto-FreeCF](https://github.com/mocasus/Auto-FreeCF) — Original baseline concept and automation approach
 - [nodriver](https://github.com/ultrafunkamsterdam/nodriver) — Undetected Chrome automation
 - [Boterdrop-Solver](https://github.com/najibyahya/Boterdrop-Solver) — Camoufox CAPTCHA solver (cf_clearance)
 - [chatgpt-auto-signup](https://github.com/SGAHSCAJASCJ/chatgpt-auto-signup) — verify_cf() implementation reference
 - [OpenCV](https://opencv.org/) — Computer vision for template matching
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Config not found: config.json` | Config file missing | `cp config.example.json config.json` then edit it |
+| `ConnectionRefusedError` for mail API | Mail server is down or wrong URL | Check `mail_api` in config, verify server is running |
+| `Email failed: 422` / `400` | Domain not supported by mail API | Make sure your mail API has the domains in `mail_domains` |
+| `You are unable to sign up at this time` | **Rate limited** — too many signups from same IP | Wait 2-6 hours, or use a proxy (`-p http://user:pass@host:port`) |
+| `Turnstile checkbox not found` | OpenCV template mismatch or screenshot failed | Make sure `turnstile_checkbox.png` exists, or try with `--headless` off first |
+| `Token creation failed: Review button not found` | Dashboard page didn't load fully | Increase wait time, check if browser was logged in properly |
+| `cf_clearance cookie is TLS-fingerprint-bound` | Using `curl_cffi` outside Camoufox | This tool uses nodriver (full browser), not `curl_cffi` — this shouldn't occur |
+| `Xvfb not found` | Missing virtual display | `apt install -y xvfb` then run with `xvfb-run` |
+| `nodriver not found` | Python dependency missing | `pip install -r requirements.txt` |
+| `Chrome not found` | Google Chrome not installed | `apt install -y google-chrome-stable` or install from [Google](https://www.google.com/chrome/) |
+| `PermissionError: DISPLAY` | Running headless env without xvfb | Use `xvfb-run --auto-servernum python main.py` |
+
+### Token Validation Fails (`token_valid: false`)
+
+This usually means:
+1. Token was created but permissions weren't applied — re-run and check dashboard manually
+2. Rate limit hit during token creation — account exists but token is incomplete
+3. Token expired immediately — Cloudflare sometimes invalidates auto-created tokens
+
+**Workaround:** Even if validation fails, the `account_id` + `api_token` are still saved in `results.json`. You can manually verify at `https://dash.cloudflare.com/{account_id}/api-tokens`.
+
+### Browser Won't Start
+
+```bash
+# Check if Chrome is installed
+google-chrome --version
+
+# Check if Xvfb is installed
+which xvfb-run
+
+# Manual test — should open a browser window (or blank screen if no display)
+xvfb-run --auto-servernum python -c "import nodriver as uc; import asyncio; asyncio.run(uc.start())"
+```
+
+---
+
+## 🔄 End-to-End Guide: From Zero to Running
+
+### Step 1: Prepare VPS
+
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install dependencies
+sudo apt install -y xvfb google-chrome-stable python3.10 python3-pip git
+
+# Clone
+git clone https://github.com/YOUR_USERNAME/cloudflare-auto-signup.git
+cd cloudflare-auto-signup
+
+# Python setup
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Step 2: Set Up Mail API
+
+You need a **temporary email API** that:
+- Accepts `POST /api/new_address` with `{"domain": "yourdomain.com"}`
+- Returns `{"address": "user@yourdomain.com", "jwt": "..."}`
+
+Options:
+- [**Self-hosted temp mail**](https://github.com/nickspaargaren/no-google) — Self-hosted disposable mail server (recommended)
+- [**Mailinator API**](https://www.mailinator.com/) — Commercial, limited free tier
+- **Any disposable mail server** — As long as it matches the API format
+
+Configure in `config.json`:
+```json
+{
+    "mail_api": "https://your-mail-api.example.com/api/new_address",
+    "mail_domains": ["yourdomain.com"]
+}
+```
+
+### Step 3: Configure
+
+```bash
+cp config.example.json config.json
+nano config.json  # Edit mail_api, mail_domains, proxy (if needed)
+```
+
+### Step 4: Run
+
+```bash
+# Single account (recommended first run)
+xvfb-run --auto-servernum python main.py
+
+# Multiple accounts
+xvfb-run --auto-servernum python main.py -n 5
+
+# With proxy
+xvfb-run --auto-servernum python main.py -n 5 -p "http://user:pass@host:port"
+
+# Custom output file
+xvfb-run --auto-servernum python main.py -n 10 -o my_accounts.json
+```
+
+### Step 5: Check Results
+
+```bash
+# View results
+cat results.json | python -m json.tool
+
+# Or use jq for filtering
+cat results.json | jq '.[] | {email, account_id, api_token, status}'
+```
+
+### Step 6: Use the API Token
+
+Each account produces a token like:
+```json
+{
+  "account_id": "a1b2c3d4...",
+  "api_token": "cfut_xxxxxxxxxxxxx"
+}
+```
+
+Use it with Cloudflare Workers AI:
+```bash
+curl "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/models/search" \
+  -H "Authorization: Bearer cfut_XXXXXXXX"
+```
 
 ---
 

@@ -28,7 +28,7 @@
 ## Component Details
 
 ### 1. Email Generator
-- HTTP client calling jackmail-compatible API
+- HTTP client calling disposable mail API (compatible with most temp mail services)
 - Supports multiple domains
 - Returns JWT for inbox access
 

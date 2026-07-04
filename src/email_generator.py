@@ -1,11 +1,11 @@
-"""Temp email generator — creates disposable addresses via jackmail-compatible API."""
+"""Temp email generator — creates disposable addresses via mail API."""
 
 import httpx
 from typing import Optional
 
 
 class EmailGenerator:
-    """Generate temporary email addresses via jackmail API."""
+    """Generate temporary email addresses via mail API."""
 
     def __init__(self, api_url: str, domains: list[str], timeout: int = 30):
         self.api_url = api_url

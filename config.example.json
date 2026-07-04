@@ -1,9 +1,8 @@
 {
-    "mail_api": "https://mail.jackishere.my.id/api/new_address",
+    "mail_api": "https://your-mail-api.example.com/api/new_address",
     "mail_domains": [
-        "jackishere.web.id",
-        "jackishere.my.id",
-        "maryjane.web.id"
+        "yourdomain.com",
+        "anotherdomain.com"
     ],
     "proxy": null,
     "headless": false,
