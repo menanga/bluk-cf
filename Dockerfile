@@ -36,4 +36,6 @@ COPY . .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
+ENV DOCKER_ENV=1
+
 CMD ["python", "main.py"]

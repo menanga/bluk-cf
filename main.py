@@ -106,7 +106,14 @@ async def process_account(
         from src.utils import generate_password
 
         password = generate_password()
-        browser = await uc.start(headless=headless)
+
+        # Docker/non-root needs no_sandbox flag
+        browser_config = uc.Config()
+        browser_config.headless = headless
+        if os.getenv("DOCKER_ENV") or os.geteuid() != 0 if hasattr(os, 'geteuid') else False:
+            browser_config.sandbox = False
+
+        browser = await uc.start(config=browser_config)
         page = await browser.get("https://dash.cloudflare.com/sign-up")
 
         # Retry signup with exponential backoff on rate limit
