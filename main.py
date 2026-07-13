@@ -339,12 +339,27 @@ async def main():
                         )
 
                         if result["success"]:
-                            entries.append({
+                            entry = {
                                 "name": f"CF-{result['account_id'][:8]}",
                                 "email": result["email"],
                                 "accountId": result["account_id"],
                                 "apiKey": result["token"],
-                            })
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                            entries.append(entry)
+
+                            # Save to CSV immediately
+                            csv_file = os.getenv("CSV_OUTPUT_PATH", "successful_accounts.csv")
+                            file_exists = Path(csv_file).exists()
+
+                            # Create directory if needed
+                            Path(csv_file).parent.mkdir(parents=True, exist_ok=True)
+
+                            with open(csv_file, 'a', encoding='utf-8') as f:
+                                if not file_exists:
+                                    f.write("timestamp,email,account_id,token\n")
+                                f.write(f"{entry['timestamp']},{entry['email']},{entry['accountId']},{entry['apiKey']}\n")
+
                             console.print(f"[green]✓ {result['email']} — {result['account_id']}[/green]")
                         else:
                             console.print(f"[red]✗ {result['email']} — {result.get('error', 'Unknown')}[/red]")

@@ -43,3 +43,36 @@ See `.env.example`.
 ## GitHub Container Registry
 
 Push to `master` → auto-builds to `ghcr.io/YOUR_USERNAME/bluk-cf:latest`
+
+## Persist Data to Host
+
+Mount volume to save accounts CSV to host machine:
+
+```bash
+docker run -d \
+  -v $(pwd)/data:/app/data \
+  -e GMAIL_EMAIL="your@gmail.com" \
+  -e GMAIL_APP_PASSWORD="your_password" \
+  -e NINE_ROUTER_PASSWORD="your_password" \
+  -e CSV_OUTPUT_PATH="/app/data/accounts.csv" \
+  ghcr.io/YOUR_USERNAME/bluk-cf:latest
+```
+
+Creates `./data/accounts.csv` on host machine.
+
+### Docker Compose with Volume
+
+```yaml
+version: '3.8'
+services:
+  bluk-cf:
+    image: ghcr.io/YOUR_USERNAME/bluk-cf:latest
+    volumes:
+      - ./data:/app/data
+    environment:
+      - CSV_OUTPUT_PATH=/app/data/accounts.csv
+      - GMAIL_EMAIL=${GMAIL_EMAIL}
+      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD}
+      - NINE_ROUTER_PASSWORD=${NINE_ROUTER_PASSWORD}
+    restart: unless-stopped
+```
