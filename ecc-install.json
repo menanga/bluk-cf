@@ -1,0 +1,11 @@
+{
+  "target": "claude",
+  "language": "python",
+  "skills": [
+    "python-patterns",
+    "python-testing",
+    "security-review",
+    "systematic-debugging"
+  ],
+  "description": "Python automation project with web scraping, email flows, and token validation"
+}

@@ -1,84 +1,37 @@
-"""Temp email generator — creates disposable addresses via mail API."""
+"""Email generator — random addresses from domains.txt."""
 
-import httpx
-from typing import Optional
+import random
+import string
+from pathlib import Path
 
 
 class EmailGenerator:
-    """Generate temporary email addresses via mail API."""
+    """Generate random email addresses from domain list."""
 
-    def __init__(self, api_url: str, domains: list[str], timeout: int = 30):
-        self.api_url = api_url
-        self.domains = domains
-        self.timeout = timeout
-        self._client: Optional[httpx.Client] = None
-
-    @property
-    def client(self) -> httpx.Client:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.Client(timeout=self.timeout)
-        return self._client
-
-    def create(self, username: Optional[str] = None, domain: Optional[str] = None) -> dict:
-        """
-        Create a new temporary email address.
-
-        Args:
-            username: Custom username. Auto-generated if None.
-            domain: Email domain. Random from config if None.
-
-        Returns:
-            dict with 'email', 'jwt' (for checking inbox), 'address', 'domain'
-        """
-        if domain is None:
-            import random
-            domain = random.choice(self.domains)
-
-        payload = {"domain": domain}
-        if username:
-            payload["name"] = username
-
-        r = self.client.post(self.api_url, json=payload)
-        r.raise_for_status()
-        data = r.json()
-
-        return {
-            "email": data["address"],
-            "jwt": data["jwt"],
-            "address": data["address"],
-            "domain": domain,
-        }
-
-    def check_inbox(self, jwt: str, limit: int = 20, offset: int = 0) -> list:
-        """Check inbox for received emails."""
-        base = self.api_url.replace("/new_address", "")
-        r = self.client.get(
-            f"{base}/parsed_mails",
-            params={"limit": limit, "offset": offset},
-            headers={"Authorization": f"Bearer {jwt}"},
-        )
-        r.raise_for_status()
-        data = r.json()
-        if isinstance(data, dict):
-            return data.get("results") or data.get("items") or []
-        return data
-
-    def get_mail(self, jwt: str, mail_id: str | int) -> dict:
-        """Get a parsed email by id."""
-        base = self.api_url.replace("/new_address", "")
-        r = self.client.get(
-            f"{base}/parsed_mail/{mail_id}",
-            headers={"Authorization": f"Bearer {jwt}"},
-        )
-        r.raise_for_status()
-        return r.json()
-
-    def close(self):
-        if self._client and not self._client.is_closed:
-            self._client.close()
+    def __init__(self, domains_file: str = "domains.txt"):
+        self.domains_file = domains_file
+        self.domains = []
 
     def __enter__(self):
+        self.domains = self.load_domains(self.domains_file)
         return self
 
     def __exit__(self, *args):
-        self.close()
+        pass
+
+    def load_domains(self, path: str) -> list[str]:
+        """Load domains from file, one per line."""
+        domains = []
+        with open(path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    domains.append(line)
+        return domains
+
+    def generate_email(self) -> str:
+        """Generate random email: <random>@<random-domain>"""
+        length = random.randint(8, 12)
+        username = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+        domain = random.choice(self.domains)
+        return f"{username}@{domain}"

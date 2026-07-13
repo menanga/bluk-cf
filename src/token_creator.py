@@ -51,6 +51,10 @@ class TokenResult:
         self.method = method
         self.raw = raw
 
+    def __getitem__(self, key: str):
+        """Support dict-style access for backward compat."""
+        return getattr(self, key)
+
 
 def _unwrap_nodriver_value(value: Any, default: Any = None) -> Any:
     """Best-effort parser for nodriver page.evaluate() wrapped results."""
@@ -132,22 +136,30 @@ async def create_token_api(
     page: uc.Tab,
     account_id: str = "",
     token_name: str = "workers-ai-auto",
+    max_retries: int = 3,
 ) -> TokenResult:
-    """Create a Workers AI API token via Cloudflare dashboard session API."""
+    """Create a Workers AI API token via Cloudflare dashboard session API with 429 retry."""
     account_id = await get_account_id(page, account_id)
 
     print("    Trying direct token API POST /api/v4/user/tokens...")
     token_name_js = json.dumps(token_name)
-    raw = await page.evaluate(
-        f"""
-        (async () => {{
-            const body = {{
-                name: {token_name_js},
-                condition: {{}},
-                policies: [{{
-                    effect: 'allow',
-                    resources: {{'com.cloudflare.api.account.*': '*'}},
-                    permission_groups: [
+
+    for attempt in range(max_retries):
+        if attempt > 0:
+            wait = 2 ** attempt  # exponential: 2s, 4s, 8s
+            print(f"    Retry {attempt}/{max_retries} after {wait}s (429 rate limit)...")
+            await asyncio.sleep(wait)
+
+        raw = await page.evaluate(
+            f"""
+            (async () => {{
+                const body = {{
+                    name: {token_name_js},
+                    condition: {{}},
+                    policies: [{{
+                        effect: 'allow',
+                        resources: {{'com.cloudflare.api.account.*': '*'}},
+                        permission_groups: [
                         {{id: 'a92d2450e05d4e7bb7d0a64968f83d11'}},
                         {{id: 'bacc64e0f6c34fc0883a1223f938a104'}}
                     ]
@@ -167,70 +179,87 @@ async def create_token_api(
             return JSON.stringify({{status: r.status, body: text}});
         }})()
         """,
-        await_promise=True,
-        return_by_value=True,
-    )
+            await_promise=True,
+            return_by_value=True,
+        )
 
-    data = _loads_wrapped_json(raw, default={}) or {}
-    status = data.get("status")
-    body_text = data.get("body") or ""
+        data = _loads_wrapped_json(raw, default={}) or {}
+        status = data.get("status")
+        body_text = data.get("body") or ""
 
-    if status != 200:
-        snippet = body_text[:500].replace("\n", " ")
-        try:
-            err_resp = json.loads(body_text)
-            err_messages = " | ".join(
-                str(e.get("message", e)) for e in (err_resp.get("errors") or [])
-            )
-            if "verify" in err_messages.lower() and "email" in err_messages.lower():
-                return TokenResult(
-                    False,
-                    token_name=token_name,
-                    error="email_not_verified",
-                    method="api",
-                    raw={"status": status, "body": err_resp},
-                )
-        except Exception:
-            pass
-        if status == 403 and "Attention Required" in body_text:
+        # Handle 429 rate limit - retry
+        if status == 429:
+            if attempt < max_retries - 1:
+                continue
+            # exhausted retries
+            snippet = (body_text or "")[:200]
             return TokenResult(
                 False,
                 token_name=token_name,
-                error="api_waf_403_attention_required",
+                error=f"api_http_429_exhausted: {snippet}",
                 method="api",
                 raw={"status": status, "body": snippet},
             )
-        return TokenResult(
-            False,
-            token_name=token_name,
-            error=f"api_http_{status}: {snippet}",
-            method="api",
-            raw={"status": status, "body": snippet},
-        )
 
-    try:
-        resp = json.loads(body_text)
-    except Exception:
-        return TokenResult(False, token_name=token_name, error="api_invalid_json", method="api", raw=body_text[:500])
+        if status != 200:
+            snippet = body_text[:500].replace("\n", " ")
+            try:
+                err_resp = json.loads(body_text)
+                err_messages = " | ".join(
+                    str(e.get("message", e)) for e in (err_resp.get("errors") or [])
+                )
+                if "verify" in err_messages.lower() and "email" in err_messages.lower():
+                    return TokenResult(
+                        False,
+                        token_name=token_name,
+                        error="email_not_verified",
+                        method="api",
+                        raw={"status": status, "body": err_resp},
+                    )
+            except Exception:
+                pass
+            if status == 403 and "Attention Required" in body_text:
+                return TokenResult(
+                    False,
+                    token_name=token_name,
+                    error="api_waf_403_attention_required",
+                    method="api",
+                    raw={"status": status, "body": snippet},
+                )
+            return TokenResult(
+                False,
+                token_name=token_name,
+                error=f"api_http_{status}: {snippet}",
+                method="api",
+                raw={"status": status, "body": snippet},
+            )
 
-    if resp.get("success") and resp.get("result", {}).get("value"):
-        return TokenResult(
-            True,
-            token=resp["result"]["value"],
-            token_name=token_name,
-            token_id=resp.get("result", {}).get("id", ""),
-            method="api",
-            raw=resp,
-        )
+        try:
+            resp = json.loads(body_text)
+        except Exception:
+            return TokenResult(False, token_name=token_name, error="api_invalid_json", method="api", raw=body_text[:500])
 
-    errors = resp.get("errors") or []
-    messages = " | ".join(str(e.get("message", e)) for e in errors) if errors else str(resp)[:500]
-    if "verify" in messages.lower() and "email" in messages.lower():
-        err = "email_not_verified"
-    else:
-        err = f"api_token_failed: {messages}"
+        if resp.get("success") and resp.get("result", {}).get("value"):
+            return TokenResult(
+                True,
+                token=resp["result"]["value"],
+                token_name=token_name,
+                token_id=resp.get("result", {}).get("id", ""),
+                method="api",
+                raw=resp,
+            )
 
-    return TokenResult(False, token_name=token_name, error=err, method="api", raw=resp)
+        errors = resp.get("errors") or []
+        messages = " | ".join(str(e.get("message", e)) for e in errors) if errors else str(resp)[:500]
+        if "verify" in messages.lower() and "email" in messages.lower():
+            err = "email_not_verified"
+        else:
+            err = f"api_token_failed: {messages}"
+
+        return TokenResult(False, token_name=token_name, error=err, method="api", raw=resp)
+
+    # Fallback if all retries failed without explicit return
+    return TokenResult(False, token_name=token_name, error="api_retry_exhausted", method="api")
 
 
 async def _press_tab(page: uc.Tab) -> None:

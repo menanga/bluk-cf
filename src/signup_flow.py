@@ -10,8 +10,11 @@ Handles:
 """
 
 import asyncio
+import logging
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import nodriver as uc
 
@@ -90,6 +93,19 @@ async def signup(
     await pw_input.click()
     await asyncio.sleep(0.5)
     await pw_input.send_keys(password)
+    await asyncio.sleep(1)
+
+    # Verify password value in DOM
+    pw_value = await pw_input.apply("el => el.value")
+    logger.info(f"Password field value length: {len(pw_value) if pw_value else 0}")
+    if not pw_value or len(pw_value) < 8:
+        logger.warning(f"Password not entered correctly. Retrying...")
+        await pw_input.clear_input()
+        await asyncio.sleep(0.5)
+        await pw_input.send_keys(password)
+        await asyncio.sleep(1)
+
+    # Wait for validation to clear
     await asyncio.sleep(2)
 
     # Scroll to make Turnstile visible
@@ -124,12 +140,28 @@ async def signup(
     await submit_btn.click()
 
     # Wait for redirect
-    for _ in range(max_wait):
+    for i in range(max_wait):
         await asyncio.sleep(1)
         url = await page.evaluate("location.href")
         if "/sign-up" not in url:
             break
+        # Debug: log every 10s
+        if i > 0 and i % 10 == 0:
+            print(f"[DEBUG] Still on signup page after {i}s, URL: {url}")
+
     await asyncio.sleep(10)  # Extra wait for dashboard to load
+
+    # Check if still on signup after max_wait
+    final_url = await page.evaluate("location.href")
+    if "/sign-up" in final_url:
+        # Capture error messages or page state
+        error_text = await page.evaluate("""
+            Array.from(document.querySelectorAll('p, [role="alert"], .error'))
+                .map(el => el.textContent.trim())
+                .filter(t => t.length > 0)
+                .join(' | ')
+        """)
+        return SignupResult(False, email=email, error=f"Redirect failed: {final_url}. Errors: {error_text or 'none'}")
 
     # Extract Account ID from URL
     url = await page.evaluate("location.href")

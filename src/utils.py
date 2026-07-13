@@ -4,21 +4,44 @@ import json
 import random
 import string
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
-def generate_password(length: int = 12) -> str:
-    """Generate a strong password: Cf### + special chars + mixed case + digits."""
-    digits = "".join(random.choices(string.digits, k=3))
-    specials = random.choices("!@#$%^&*", k=2)
-    letters = random.choices(string.ascii_letters, k=length - 5 - 2)
-    base = f"Cf{digits}" + "".join(letters) + "".join(specials)
-    # Shuffle middle portion
-    chars = list(base[2:])
-    random.shuffle(chars)
-    return "Cf" + "".join(chars)
+@dataclass
+class IMAPConfig:
+    """IMAP configuration for email verification."""
+    host: str
+    port: int
+    username: str
+    password: str
+    domains_path: str
+
+
+def generate_password(length: int = 16) -> str:
+    """Generate Cloudflare-compliant password: ≥8 chars, ≥1 number, ≥1 special ($!&), no whitespace."""
+    # Cloudflare accepts: $, !, &, and common symbols
+    specials = "!$&@#%*"
+
+    # Ensure minimum requirements
+    parts = [
+        random.choice(string.ascii_uppercase),  # At least 1 uppercase
+        random.choice(string.ascii_lowercase),  # At least 1 lowercase
+        random.choice(string.digits),            # At least 1 digit
+        random.choice(specials),                 # At least 1 special
+    ]
+
+    # Fill remaining length with mixed chars
+    remaining = length - len(parts)
+    pool = string.ascii_letters + string.digits + specials
+    parts.extend(random.choices(pool, k=remaining))
+
+    # Shuffle to randomize position of required chars
+    random.shuffle(parts)
+
+    return ''.join(parts).strip()  # Ensure no leading/trailing whitespace
 
 
 def generate_username(prefix: str = "cf", length: int = 5) -> str:
