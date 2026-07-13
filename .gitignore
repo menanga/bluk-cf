@@ -9,3 +9,9 @@ build/
 .env
 screenshots/
 node_modules/
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/.gitignore
+/.idea/bluk-cf.iml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/vcs.xml

@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -35,6 +36,44 @@ from src.token_validator import validate_token
 
 
 console = Console()
+
+
+def load_config(config_path="config.json"):
+    """Load config from file, fallback to empty dict."""
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Invalid JSON in config: {e}[/red]")
+        return {}
+
+
+def load_env_or_config(env_key, config_keys, default=None):
+    """Load value from env var first, then config.json, then default."""
+    env_val = os.getenv(env_key)
+    if env_val is not None:
+        return env_val
+
+    config = load_config()
+    for key_path in config_keys:
+        val = config
+        for key in key_path.split("."):
+            val = val.get(key, {})
+        if val and not isinstance(val, dict):
+            return val
+
+    return default
+
+
+def setup_domains_from_env():
+    """Create domains.txt from DOMAINS env var if not exists."""
+    domains_env = os.getenv("DOMAINS")
+    if domains_env and not Path("domains.txt").exists():
+        domains = [d.strip() for d in domains_env.replace(",", "\n").split("\n") if d.strip()]
+        Path("domains.txt").write_text("\n".join(domains), encoding="utf-8")
+        console.print(f"[cyan]Created domains.txt from env with {len(domains)} domains[/cyan]")
 
 
 async def process_account(
@@ -170,17 +209,6 @@ async def process_account(
         return {"success": False, "email": email if 'email' in locals() else "unknown", "error": str(e)}
 
 
-def load_config(config_path):
-    """Load configuration from JSON file."""
-    try:
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError as e:
-        console.print(f"[red]Invalid JSON in config: {e}[/red]")
-        return {}
-
 
 async def main():
     """Main batch processing orchestrator."""
@@ -201,18 +229,21 @@ async def main():
     # Load config
     config = load_config(args.config)
 
-    # Merge CLI args with config (CLI overrides)
-    gmail_user = args.gmail_user or config.get("gmail", {}).get("user")
-    gmail_password = args.gmail_password or config.get("gmail", {}).get("password")
-    nine_router_password = args.nine_router_password or config.get("nine_router", {}).get("password")
-    nine_router_url = args.nine_router_url or config.get("nine_router", {}).get("api_url", "https://oapi.fastev.my.id/api")
+    # Setup domains.txt from env if needed
+    setup_domains_from_env()
 
-    domains_file = args.domains or config.get("domains_file", "domains.txt")
-    max_accounts = args.max_accounts or config.get("batch", {}).get("max_accounts")
-    batch_size = args.batch_size if args.batch_size is not None else config.get("batch", {}).get("batch_size", 10)
-    delay_account = args.delay_account if args.delay_account is not None else config.get("batch", {}).get("delay_account", 600)
-    delay_batch = args.delay_batch if args.delay_batch is not None else config.get("batch", {}).get("delay_batch", 3600)
-    headless = args.headless or config.get("batch", {}).get("headless", False)
+    # Load from env first, then config, then CLI args (CLI highest priority)
+    gmail_user = args.gmail_user or load_env_or_config("GMAIL_EMAIL", ["gmail.user"])
+    gmail_password = args.gmail_password or load_env_or_config("GMAIL_APP_PASSWORD", ["gmail.password"])
+    nine_router_password = args.nine_router_password or load_env_or_config("NINE_ROUTER_PASSWORD", ["nine_router.password"])
+    nine_router_url = load_env_or_config("NINE_ROUTER_URL", ["nine_router.api_url"], "https://oapi.fastev.my.id/api")
+
+    domains_file = args.domains or load_env_or_config("DOMAINS_FILE", ["domains_file"], "domains.txt")
+    max_accounts = args.max_accounts if args.max_accounts is not None else (int(load_env_or_config("MAX_ACCOUNTS", ["batch.max_accounts"], "0") or 0) or None)
+    batch_size = args.batch_size if args.batch_size is not None else int(load_env_or_config("BATCH_SIZE", ["batch.batch_size"], "10"))
+    delay_account = args.delay_account if args.delay_account is not None else int(load_env_or_config("DELAY_ACCOUNT", ["batch.delay_account"], "600"))
+    delay_batch = args.delay_batch if args.delay_batch is not None else int(load_env_or_config("DELAY_BATCH", ["batch.delay_batch"], "3600"))
+    headless = args.headless if args.headless else (load_env_or_config("HEADLESS", ["batch.headless"], "false").lower() in ("true", "1", "yes"))
 
     if not gmail_user or not gmail_password:
         console.print("[red]Error: Gmail credentials required (config.json or CLI)[/red]")
