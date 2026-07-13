@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install dependencies
+# Install dependencies + Xvfb for virtual display
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     ca-certificates \
     fonts-liberation \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
@@ -32,10 +33,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Run as non-root
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 ENV DOCKER_ENV=1
+ENV DISPLAY=:99
 
-CMD ["python", "main.py"]
+CMD ["/app/docker-entrypoint.sh"]

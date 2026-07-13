@@ -110,7 +110,8 @@ async def process_account(
         # Docker/non-root needs no_sandbox flag
         browser_config = uc.Config()
         browser_config.headless = headless
-        if os.getenv("DOCKER_ENV") or os.geteuid() != 0 if hasattr(os, 'geteuid') else False:
+
+        if os.getenv("DOCKER_ENV") or (hasattr(os, 'geteuid') and os.geteuid() != 0):
             browser_config.sandbox = False
 
         browser = await uc.start(config=browser_config)
