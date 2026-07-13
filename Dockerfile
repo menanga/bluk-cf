@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     unzip \
     libnss3 \
-    libgconf-2-4 \
     libfontconfig1 \
     libxss1 \
     libasound2 \
