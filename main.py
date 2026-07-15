@@ -67,13 +67,13 @@ def load_env_or_config(env_key, config_keys, default=None):
     return default
 
 
-def setup_domains_from_env():
-    """Create domains.txt from DOMAINS env var if not exists."""
+def setup_domains_from_env(domains_file: str = "domains.txt"):
+    """Create/update domains file from DOMAINS env var when set."""
     domains_env = os.getenv("DOMAINS")
-    if domains_env and not Path("domains.txt").exists():
+    if domains_env:
         domains = [d.strip() for d in domains_env.replace(",", "\n").split("\n") if d.strip()]
-        Path("domains.txt").write_text("\n".join(domains), encoding="utf-8")
-        console.print(f"[cyan]Created domains.txt from env with {len(domains)} domains[/cyan]")
+        Path(domains_file).write_text("\n".join(domains), encoding="utf-8")
+        console.print(f"[cyan]Updated {domains_file} from env with {len(domains)} domains[/cyan]")
 
 
 async def process_account(
@@ -237,9 +237,6 @@ async def main():
     # Load config
     config = load_config(args.config)
 
-    # Setup domains.txt from env if needed
-    setup_domains_from_env()
-
     # Load from env first, then config, then CLI args (CLI highest priority)
     gmail_user = args.gmail_user or load_env_or_config("GMAIL_EMAIL", ["gmail.user"])
     gmail_password = args.gmail_password or load_env_or_config("GMAIL_APP_PASSWORD", ["gmail.password"])
@@ -247,6 +244,10 @@ async def main():
     nine_router_url = load_env_or_config("NINE_ROUTER_URL", ["nine_router.api_url"], "https://oapi.fastev.my.id/api")
 
     domains_file = args.domains or load_env_or_config("DOMAINS_FILE", ["domains_file"], "domains.txt")
+
+    # Setup domains file from env when set
+    setup_domains_from_env(domains_file)
+
     max_accounts = args.max_accounts if args.max_accounts is not None else (int(load_env_or_config("MAX_ACCOUNTS", ["batch.max_accounts"], "0") or 0) or None)
     batch_size = args.batch_size if args.batch_size is not None else int(load_env_or_config("BATCH_SIZE", ["batch.batch_size"], "10"))
     delay_account = args.delay_account if args.delay_account is not None else int(load_env_or_config("DELAY_ACCOUNT", ["batch.delay_account"], "600"))
