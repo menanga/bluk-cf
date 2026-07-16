@@ -241,7 +241,7 @@ async def main():
     gmail_user = args.gmail_user or load_env_or_config("GMAIL_EMAIL", ["gmail.user"])
     gmail_password = args.gmail_password or load_env_or_config("GMAIL_APP_PASSWORD", ["gmail.password"])
     nine_router_password = args.nine_router_password or load_env_or_config("NINE_ROUTER_PASSWORD", ["nine_router.password"])
-    nine_router_url = load_env_or_config("NINE_ROUTER_URL", ["nine_router.api_url"], "https://my-9router-or-omniroute.com/api")
+    nine_router_url = load_env_or_config("NINE_ROUTER_URL", ["nine_router.api_url"])
 
     domains_file = args.domains or load_env_or_config("DOMAINS_FILE", ["domains_file"], "domains.txt")
 
@@ -377,7 +377,7 @@ async def main():
                 if entries:
                     console.print(f"[bold cyan]Deploying {len(entries)} entries to 9router...[/bold cyan]")
                     try:
-                        client = NineRouterClient()
+                        client = NineRouterClient(nine_router_url)
                         auth_token = client.login(nine_router_password)
 
                         for entry in entries:

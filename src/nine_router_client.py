@@ -3,9 +3,8 @@ from typing import Any
 
 
 class NineRouterClient:
-    BASE_URL = "https://my-9router-or-omniroute.com/api"
-
-    def __init__(self):
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
         self.client = httpx.Client(timeout=30.0)
         self.token: str | None = None
 
@@ -18,7 +17,7 @@ class NineRouterClient:
 
     def login(self, password: str) -> str:
         response = self.client.post(
-            f"{self.BASE_URL}/auth/login",
+            f"{self.base_url}/auth/login",
             json={"password": password}
         )
         response.raise_for_status()
@@ -34,7 +33,7 @@ class NineRouterClient:
 
     def bulk_deploy(self, token: str, entries: list[dict]) -> dict[str, Any]:
         response = self.client.post(
-            f"{self.BASE_URL}/providers/bulk",
+            f"{self.base_url}/providers/bulk",
             headers={
                 "Cookie": f"auth_token={token}",
                 "Content-Type": "application/json"
